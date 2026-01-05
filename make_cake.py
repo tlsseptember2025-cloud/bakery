@@ -1,117 +1,149 @@
 import tkinter as tk
+from tkinter import ttk, messagebox
 import sqlite3
-from tkinter import messagebox
-from datetime import datetime
 import os
+from datetime import datetime
 from utils import center_window
+
+
+# ---------------- HELPER FUNCTIONS ----------------
+
+def safe_float(value):
+    try:
+        return float(value)
+    except:
+        return 0.0
+
+
+def generate_receipt(recipe_name, ingredients):
+    os.makedirs("receipts", exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"receipts/{recipe_name}_{timestamp}.txt"
+
+    with open(filename, "w") as file:
+        file.write("BAKERY RECEIPT\n")
+        file.write("=" * 35 + "\n")
+        file.write(f"Recipe: {recipe_name}\n")
+        file.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+        file.write("Ingredients Used:\n")
+
+        for name, qty, unit in ingredients:
+            file.write(f"- {name}: {qty} {unit}\n")
+
+        file.write("\nThank you!\n")
+
+    return filename
+
+
+# ---------------- MAIN WINDOW ----------------
 
 def open_make_cake():
     win = tk.Toplevel()
     win.title("Make Cake")
-    center_window(win, 400, 250)
-    #win.geometry("400x350")
+    center_window(win, 600, 450)
+    win.lift()
+    win.focus_force()
 
-    tk.Label(win, text="Make Cake 🍰", font=("Arial", 14)).pack(pady=10)
+    tk.Label(win, text="Make Cake", font=("Arial", 16, "bold")).pack(pady=15)
 
-    # --- Connect to DB and get recipes ---
+    # ---------- LOAD RECIPES ----------
+    tk.Label(win, text="Select Recipe", font=("Arial", 12)).pack()
+    recipe_combo = ttk.Combobox(win, state="readonly", width=35)
+    recipe_combo.pack(pady=10)
+
     conn = sqlite3.connect("bakery.db")
     cur = conn.cursor()
-    cur.execute("SELECT id, name FROM recipes")
+    cur.execute("SELECT id, name FROM recipes ORDER BY name ASC")
     recipes = cur.fetchall()
     conn.close()
 
-    if not recipes:
-        tk.Label(win, text="No recipes found. Please add recipes first.").pack()
-        return
+    recipe_map = {name: rid for rid, name in recipes}
+    recipe_combo["values"] = list(recipe_map.keys())
 
-    # --- Tkinter dropdown variable ---
-    selected_recipe = tk.StringVar()
-    selected_recipe.set(recipes[0][1])  # default value
-
-    # --- Dropdown menu ---
-    options = [r[1] for r in recipes]
-    tk.Label(win, text="Select Cake:").pack()
-    tk.OptionMenu(win, selected_recipe, *options).pack(pady=5)
-
-    # --- Make Cake function ---
+    # ---------- MAKE CAKE ----------
     def make_cake():
-        recipe_name = selected_recipe.get()
+        recipe_name = recipe_combo.get()
+
+        if not recipe_name:
+            messagebox.showerror("Error", "Please select a recipe", parent=win)
+            return
+
+        recipe_id = recipe_map[recipe_name]
+
         conn = sqlite3.connect("bakery.db")
         cur = conn.cursor()
 
-        # Get recipe ID
-        cur.execute("SELECT id FROM recipes WHERE name=?", (recipe_name,))
-        recipe_id = cur.fetchone()[0]
-
-        # Get ingredients for recipe (including unit)
         cur.execute("""
-        SELECT i.id, i.name, i.quantity, i.alert_level, ri.amount_used, i.unit
-        FROM ingredients i
-        JOIN recipe_ingredients ri ON i.id = ri.ingredient_id
-        WHERE ri.recipe_id=?
+            SELECT 
+                ri.ingredient_id,
+                ri.quantity,
+                i.quantity,
+                i.name,
+                i.unit
+            FROM recipe_ingredients ri
+            JOIN ingredients i ON ri.ingredient_id = i.id
+            WHERE ri.recipe_id = ?
         """, (recipe_id,))
-        items = cur.fetchall()
 
-        # --- Check for insufficient stock ---
-        for item in items:
-            ingredient_name = item[1]
-            available_qty = item[2]
-            required_qty = item[4]
-            if available_qty < required_qty:
-                messagebox.showerror(
-                    "Insufficient Stock",
-                    f"Not enough {ingredient_name}! Available: {available_qty} {item[5]}, Needed: {required_qty} {item[5]}"
-                )
+        rows = cur.fetchall()
+
+        used_ingredients = []
+
+        # ---------- CHECK INVENTORY ----------
+        for ing_id, req_qty, avail_qty, name, unit in rows:
+            req_qty = safe_float(req_qty)
+            avail_qty = safe_float(avail_qty)
+
+            if avail_qty < req_qty:
                 conn.close()
-                return  # Stop making cake
-
-        # --- Deduct stock & prepare receipt ---
-        receipt_lines = []
-        receipt_lines.append("🍰 Bakery Receipt 🍰")
-        receipt_lines.append(f"Cake: {recipe_name}")
-        receipt_lines.append(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        receipt_lines.append("\nIngredients Used:")
-
-        for item in items:
-            ingredient_id = item[0]
-            ingredient_name = item[1]
-            available_qty = item[2]
-            alert_level = item[3]
-            used_qty = item[4]
-            unit = item[5]
-
-            new_qty = available_qty - used_qty
-            cur.execute("UPDATE ingredients SET quantity=? WHERE id=?", (new_qty, ingredient_id))
-
-            receipt_lines.append(f"- {ingredient_name}: {used_qty} {unit}")
-
-            # Low stock alert
-            if new_qty <= alert_level:
-                messagebox.showwarning(
-                    "Low Stock Alert",
-                    f"{ingredient_name} is running low! Remaining: {new_qty} {unit}"
+                messagebox.showerror(
+                    "Low Stock",
+                    f"Not enough {name}\n\n"
+                    f"Available: {avail_qty} {unit}\n"
+                    f"Required: {req_qty} {unit}",
+                    parent=win
                 )
+                return
+
+            used_ingredients.append((name, req_qty, unit))
+
+        # ---------- DEDUCT INVENTORY ----------
+        for ing_id, req_qty, avail_qty, name, unit in rows:
+            req_qty = safe_float(req_qty)
+            avail_qty = safe_float(avail_qty)
+
+            new_qty = avail_qty - req_qty
+            if new_qty < 0:
+                new_qty = 0
+
+            cur.execute(
+                "UPDATE ingredients SET quantity = ? WHERE id = ?",
+                (new_qty, ing_id)
+            )
 
         conn.commit()
         conn.close()
 
-        # --- Save receipt in receipts/ folder ---
-        receipts_folder = "receipts"
-        if not os.path.exists(receipts_folder):
-            os.makedirs(receipts_folder)
-
-        receipt_filename = os.path.join(
-            receipts_folder,
-            f"receipt_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-        )
-
-        with open(receipt_filename, "w") as f:
-            for line in receipt_lines:
-                f.write(line + "\n")
+        # ---------- GENERATE RECEIPT ----------
+        receipt_file = generate_receipt(recipe_name, used_ingredients)
 
         messagebox.showinfo(
             "Success",
-            f"Cake made successfully!\nReceipt saved as:\n{receipt_filename}"
+            f"{recipe_name} prepared successfully!\n\n"
+            f"Receipt saved in:\n{receipt_file}",
+            parent=win
         )
 
-    tk.Button(win, text="Make Cake", command=make_cake, width=25).pack(pady=20)
+        win.lift()
+        win.focus_force()
+
+    # ---------- BUTTON ----------
+    tk.Button(
+        win,
+        text="Make Cake",
+        font=("Arial", 12, "bold"),
+        width=22,
+        command=make_cake
+    ).pack(pady=25)
+

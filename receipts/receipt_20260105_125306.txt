@@ -1,7 +1,0 @@
-🍰 Bakery Receipt 🍰
-Cake: test
-Date: 2026-01-05 12:53:04
-
-Ingredients Used:
-- oil: 30.0 ml
-- weat: 2.0 kg

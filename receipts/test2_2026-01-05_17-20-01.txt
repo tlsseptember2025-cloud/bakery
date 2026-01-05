@@ -1,0 +1,10 @@
+BAKERY RECEIPT
+===================================
+Recipe: test2
+Date: 2026-01-05 17:20:01
+
+Ingredients Used:
+- oil: 11.0 ml
+- weat: 1.0 kg
+
+Thank you!
