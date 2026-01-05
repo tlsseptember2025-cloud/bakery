@@ -2,10 +2,12 @@ import tkinter as tk
 from inventory import open_inventory
 from recipes import open_recipes
 from make_cake import open_make_cake
-#test
+from utils import center_window
+
 app = tk.Tk()
 app.title("Bakery Management System")
-app.geometry("400x400")
+center_window(app, 400, 250)
+#app.geometry("400x400")
 
 tk.Label(
     app,

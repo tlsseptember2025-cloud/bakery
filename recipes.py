@@ -1,10 +1,12 @@
 import tkinter as tk
 import sqlite3
 from tkinter import messagebox
+from utils import center_window
 
 def open_recipes():
     win = tk.Toplevel()
     win.title("Recipes")
+    center_window(win, 300, 200)
     win.geometry("300x200")
 
     tk.Label(win, text="Recipe Name").pack(pady=10)

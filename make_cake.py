@@ -3,11 +3,13 @@ import sqlite3
 from tkinter import messagebox
 from datetime import datetime
 import os
+from utils import center_window
 
 def open_make_cake():
     win = tk.Toplevel()
     win.title("Make Cake")
-    win.geometry("400x350")
+    center_window(win, 400, 250)
+    #win.geometry("400x350")
 
     tk.Label(win, text="Make Cake 🍰", font=("Arial", 14)).pack(pady=10)
 
