@@ -12,7 +12,7 @@ center_window(root, 800, 600)
 # Optional: set background color
 root.config(bg="#f5f5f5")
 
-# --- Function to load and resize images ---
+# --- Function to load and resize images   ---
 def load_image(path, size=(128, 128)):
     img = Image.open(path)
     img = img.resize(size, Image.LANCZOS)  # <-- use LANCZOS instead of ANTIALIAS

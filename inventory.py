@@ -14,7 +14,7 @@ def open_inventory():
 
     tk.Label(win, text="Current Inventory", font=("Arial", 14, "bold")).pack(pady=10)
 
-    # --- Table frame ---
+    # ---Table frame---
     table_frame = tk.Frame(win)
     table_frame.pack(fill="both", expand=True, padx=10)
 
