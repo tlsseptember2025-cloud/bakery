@@ -68,6 +68,7 @@ def ensure_cost_column():
 def generate_receipt(recipe_name, qty, customer_name, selling_price, ingredients_used):
     """
     ingredients_used: list of (name, qty_used, unit, cost_per_unit)
+    This version hides cost & profit from the customer receipt.
     """
     os.makedirs("receipts", exist_ok=True)
 
@@ -75,7 +76,6 @@ def generate_receipt(recipe_name, qty, customer_name, selling_price, ingredients
     file_path = f"receipts/{recipe_name}_{timestamp}.txt"
 
     total_sale = selling_price * qty
-    total_cost = 0.0
     lines = []
 
     lines.append("BAKERY RECEIPT")
@@ -88,20 +88,11 @@ def generate_receipt(recipe_name, qty, customer_name, selling_price, ingredients
     lines.append("")
     lines.append("Ingredients Used:")
 
+    # We do NOT show cost or profit to customer
     for name, qty_used, unit, cpu in ingredients_used:
         qty_used = safe_float(qty_used)
-        cpu = safe_float(cpu)
-        line_cost = qty_used * cpu
-        total_cost += line_cost
-        if cpu > 0:
-            lines.append(f"- {name}: {qty_used} {unit}  (cost: {line_cost:.2f})")
-        else:
-            lines.append(f"- {name}: {qty_used} {unit}")
+        lines.append(f"- {name}: {qty_used} {unit}")
 
-    lines.append("")
-    lines.append(f"Estimated Total Cost : {total_cost:.2f}")
-    profit = total_sale - total_cost
-    lines.append(f"Estimated Profit     : {profit:.2f}")
     lines.append("")
     lines.append(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     lines.append("Thank you!")
@@ -112,10 +103,11 @@ def generate_receipt(recipe_name, qty, customer_name, selling_price, ingredients
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(receipt_text)
 
-    # Save to DB
+    # Save to DB (we still store only total sale, not profit)
     save_receipt_to_db(recipe_name, qty, customer_name, total_sale, receipt_text)
 
     return file_path, receipt_text
+
 
 
 def show_receipt_preview(parent, receipt_text, file_path):
