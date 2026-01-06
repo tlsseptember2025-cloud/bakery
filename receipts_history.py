@@ -1,11 +1,67 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
+import os
+import tempfile
 from utils import center_window
 
 
+def safe_float(value):
+    try:
+        return float(value)
+    except:
+        return 0.0
+
+
+def ensure_receipts_table():
+    conn = sqlite3.connect("bakery.db")
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS receipts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recipe_name TEXT,
+            quantity INTEGER,
+            customer_name TEXT,
+            total REAL,
+            receipt_text TEXT,
+            created_at TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def print_receipt_text(receipt_text, parent):
+    """
+    Print a receipt from its text content.
+    On Windows: writes to a temporary .txt file and uses os.startfile(..., 'print').
+    On other OS: shows info message.
+    """
+    if os.name == "nt":
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8") as tmp:
+                tmp.write(receipt_text)
+                tmp_path = tmp.name
+        except Exception as e:
+            messagebox.showerror("Print Error", f"Could not create temporary file:\n{e}", parent=parent)
+            return
+
+        try:
+            os.startfile(tmp_path, "print")
+        except Exception as e:
+            messagebox.showerror("Print Error", f"Could not send receipt to printer:\n{e}", parent=parent)
+    else:
+        messagebox.showinfo(
+            "Print",
+            "Automatic printing is only supported on Windows.\n"
+            "Please copy the receipt text to a text editor and print from there.",
+            parent=parent
+        )
+
+
 def open_receipts_history():
-    # ---------- MAIN WINDOW ----------
+    ensure_receipts_table()
+
     win = tk.Toplevel()
     win.title("Receipts History")
     center_window(win, 900, 500)
@@ -31,38 +87,24 @@ def open_receipts_history():
         selectmode="browse"
     )
     tree.pack(fill="both", expand=True)
-
     scroll_y.config(command=tree.yview)
     scroll_x.config(command=tree.xview)
 
-    # ---------- STYLE ----------
-    style = ttk.Style()
-    style.theme_use("clam")
-    style.configure(
-        "Treeview",
-        font=("Arial", 11),
-        rowheight=26,
-        borderwidth=1,
-        relief="solid"
-    )
-    style.configure(
-        "Treeview.Heading",
-        font=("Arial", 11, "bold"),
-        borderwidth=1,
-        relief="raised"
-    )
-    style.map('Treeview', background=[('selected', '#347083')], foreground=[('selected', 'white')])
-
-    # ---------- COLUMNS ----------
-    tree["columns"] = ("ID", "Recipe Name", "Created At")
+    tree["columns"] = ("ID", "Recipe Name", "Qty", "Customer", "Total", "Created At")
     tree.column("#0", width=0, stretch=tk.NO)
-    tree.column("ID", anchor=tk.CENTER, width=60, stretch=False)
-    tree.column("Recipe Name", anchor=tk.W, width=250, stretch=True)
-    tree.column("Created At", anchor=tk.CENTER, width=200, stretch=False)
+    tree.column("ID", anchor=tk.CENTER, width=60)
+    tree.column("Recipe Name", anchor=tk.W, width=220)
+    tree.column("Qty", anchor=tk.CENTER, width=60)
+    tree.column("Customer", anchor=tk.W, width=180)
+    tree.column("Total", anchor=tk.CENTER, width=90)
+    tree.column("Created At", anchor=tk.CENTER, width=160)
 
     tree.heading("#0", text="")
     tree.heading("ID", text="ID")
     tree.heading("Recipe Name", text="Recipe Name")
+    tree.heading("Qty", text="Qty")
+    tree.heading("Customer", text="Customer")
+    tree.heading("Total", text="Total")
     tree.heading("Created At", text="Created At")
 
     tree.tag_configure('evenrow', background='#f0f0ff')
@@ -77,7 +119,7 @@ def open_receipts_history():
         cur = conn.cursor()
         try:
             cur.execute("""
-                SELECT id, recipe_name, created_at
+                SELECT id, recipe_name, quantity, customer_name, total, created_at
                 FROM receipts
                 ORDER BY datetime(created_at) DESC
             """)
@@ -93,9 +135,15 @@ def open_receipts_history():
 
         conn.close()
 
-        for idx, r in enumerate(rows):
+        for idx, (rid, recipe_name, qty, customer, total, created_at) in enumerate(rows):
             tag = 'evenrow' if idx % 2 == 0 else 'oddrow'
-            tree.insert("", tk.END, values=r, tags=(tag,))
+            customer_display = customer if customer else "N/A"
+            tree.insert(
+                "",
+                tk.END,
+                values=(rid, recipe_name, qty, customer_display, f"{safe_float(total):.2f}", created_at),
+                tags=(tag,)
+            )
 
     load_receipts()
 
@@ -113,7 +161,7 @@ def open_receipts_history():
         conn = sqlite3.connect("bakery.db")
         cur = conn.cursor()
         cur.execute("""
-            SELECT recipe_name, receipt_text, created_at
+            SELECT recipe_name, receipt_text, created_at, quantity, customer_name, total
             FROM receipts
             WHERE id = ?
         """, (receipt_id,))
@@ -122,14 +170,15 @@ def open_receipts_history():
 
         if not row:
             messagebox.showerror("Error", "Receipt not found in database.", parent=win)
+            win.lift(); win.focus_force()
             return
 
-        recipe_name, receipt_text, created_at = row
+        recipe_name, receipt_text, created_at, qty, customer, total = row
 
         # ----- PREVIEW WINDOW -----
         preview = tk.Toplevel(win)
         preview.title(f"Receipt #{receipt_id} - {recipe_name}")
-        center_window(preview, 550, 550)
+        center_window(preview, 600, 700)
 
         preview.transient(win)
         preview.grab_set()
@@ -140,9 +189,22 @@ def open_receipts_history():
 
         tk.Label(
             preview,
-            text=f"Receipt for: {recipe_name}",
+            text=f"Receipt #{receipt_id}",
             font=("Arial", 14, "bold")
         ).pack(pady=5)
+
+        top_info = f"Recipe: {recipe_name}    |    Qty: {qty}    |    Total: {safe_float(total):.2f}"
+        tk.Label(
+            preview,
+            text=top_info,
+            font=("Arial", 10)
+        ).pack(pady=2)
+
+        tk.Label(
+            preview,
+            text=f"Customer: {customer if customer else 'N/A'}",
+            font=("Arial", 10)
+        ).pack(pady=2)
 
         tk.Label(
             preview,
@@ -160,12 +222,23 @@ def open_receipts_history():
         text_box.insert("1.0", receipt_text)
         text_box.config(state="disabled")
 
+        # Buttons: Print + Close
+        btn_frame = tk.Frame(preview)
+        btn_frame.pack(pady=8)
+
         tk.Button(
-            preview,
+            btn_frame,
+            text="Print",
+            width=12,
+            command=lambda: print_receipt_text(receipt_text, preview)
+        ).grid(row=0, column=0, padx=5)
+
+        tk.Button(
+            btn_frame,
             text="Close",
-            width=15,
+            width=12,
             command=preview.destroy
-        ).pack(pady=8)
+        ).grid(row=0, column=1, padx=5)
 
         preview.wait_window()
 
@@ -199,3 +272,4 @@ def open_receipts_history():
         width=12,
         command=win.destroy
     ).grid(row=0, column=2, padx=5)
+

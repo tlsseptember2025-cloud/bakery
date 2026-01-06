@@ -184,7 +184,7 @@ def main():
     tk.Button(
         inv_frame,
         image=exit_img,
-        command=exit(),
+        command=exit,
         bd=0,
         highlightthickness=0,
         activebackground="#f2ebe3",
@@ -197,6 +197,8 @@ def main():
         bg="#f2ebe3",
         fg="#3b2a1a"
     ).pack(pady=6)
+
+
 
     # ---------- FOOTER ----------
     footer = tk.Label(

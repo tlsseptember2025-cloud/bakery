@@ -56,12 +56,8 @@ def open_reports():
     range_combo.current(0)
     range_combo.grid(row=0, column=1, padx=5)
 
-    tk.Button(
-        filter_frame,
-        text="Generate Report",
-        command=lambda: load_report(),
-        width=16
-    ).grid(row=0, column=2, padx=5)
+    # We'll store current range string to reuse in details
+    current_range = {"value": "Today"}
 
     # ===== TABLE =====
     table_frame = tk.Frame(win)
@@ -122,6 +118,7 @@ def open_reports():
             tree.delete(row)
 
         selected_range = range_combo.get()
+        current_range["value"] = selected_range  # remember it
         conn = sqlite3.connect("bakery.db")
         cur = conn.cursor()
 
@@ -144,13 +141,12 @@ def open_reports():
 
         rows = cur.fetchall()
 
-        # For each recipe, estimate cost using current ingredients + cost_per_unit
         grand_total_qty = 0
         grand_total_sales = 0.0
         grand_total_profit = 0.0
 
         for i, (recipe_name, total_qty, total_sales) in enumerate(rows):
-            # Get recipe id
+            # Get recipe id (for cost calculation)
             cur.execute("SELECT id FROM recipes WHERE name = ?", (recipe_name,))
             rec_row = cur.fetchone()
             if not rec_row:
@@ -202,13 +198,179 @@ def open_reports():
         win.lift()
         win.focus_force()
 
-    # Load initial (Today) report
+    # ===== DRILL-DOWN: DETAILS WINDOW =====
+
+    def show_recipe_details(recipe_name):
+        """Open a window listing all receipts for this recipe in current range."""
+        selected_range = current_range["value"]
+
+        detail = tk.Toplevel(win)
+        detail.title(f"Details – {recipe_name}")
+        center_window(detail, 800, 450)
+
+        detail.transient(win)
+        detail.grab_set()
+        detail.lift()
+        detail.focus_force()
+
+        tk.Label(
+            detail,
+            text=f"Receipts for: {recipe_name} ({selected_range})",
+            font=("Arial", 14, "bold")
+        ).pack(pady=8)
+
+        frame = tk.Frame(detail)
+        frame.pack(fill="both", expand=True, padx=10, pady=5)
+
+        sy = tk.Scrollbar(frame)
+        sy.pack(side="right", fill="y")
+
+        sx = tk.Scrollbar(frame, orient="horizontal")
+        sx.pack(side="bottom", fill="x")
+
+        tree_det = ttk.Treeview(
+            frame,
+            yscrollcommand=sy.set,
+            xscrollcommand=sx.set,
+            selectmode="browse"
+        )
+        tree_det.pack(fill="both", expand=True)
+        sy.config(command=tree_det.yview)
+        sx.config(command=tree_det.xview)
+
+        tree_det["columns"] = ("ID", "Date", "Customer", "Qty", "Total")
+        tree_det.column("#0", width=0, stretch=tk.NO)
+        tree_det.column("ID", anchor=tk.CENTER, width=60)
+        tree_det.column("Date", anchor=tk.CENTER, width=170)
+        tree_det.column("Customer", anchor=tk.W, width=220)
+        tree_det.column("Qty", anchor=tk.CENTER, width=60)
+        tree_det.column("Total", anchor=tk.CENTER, width=90)
+
+        tree_det.heading("#0", text="")
+        tree_det.heading("ID", text="ID")
+        tree_det.heading("Date", text="Date")
+        tree_det.heading("Customer", text="Customer")
+        tree_det.heading("Qty", text="Qty")
+        tree_det.heading("Total", text="Total")
+
+        tree_det.tag_configure("even", background="#f0fff0")
+        tree_det.tag_configure("odd", background="#ffffff")
+
+        # Load receipts for this recipe & range
+        conn = sqlite3.connect("bakery.db")
+        cur = conn.cursor()
+
+        if selected_range == "Today":
+            cur.execute("""
+                SELECT id, customer_name, quantity, total, created_at
+                FROM receipts
+                WHERE recipe_name = ?
+                  AND date(created_at) = date('now','localtime')
+                ORDER BY datetime(created_at) DESC
+            """, (recipe_name,))
+        else:  # All Time
+            cur.execute("""
+                SELECT id, customer_name, quantity, total, created_at
+                FROM receipts
+                WHERE recipe_name = ?
+                ORDER BY datetime(created_at) DESC
+            """, (recipe_name,))
+
+        rows = cur.fetchall()
+        conn.close()
+
+        for i, (rid, cust, qty, total, created_at) in enumerate(rows):
+            tag = "even" if i % 2 == 0 else "odd"
+            cust_display = cust if cust else "N/A"
+            tree_det.insert(
+                "",
+                tk.END,
+                values=(rid, created_at, cust_display, qty, f"{safe_float(total):.2f}"),
+                tags=(tag,)
+            )
+
+        # ---- Preview full receipt on double-click ----
+
+        def preview_selected_receipt(event=None):
+            sel = tree_det.selection()
+            if not sel:
+                return
+            item = tree_det.item(sel[0])
+            rec_id = item["values"][0]
+
+            conn2 = sqlite3.connect("bakery.db")
+            cur2 = conn2.cursor()
+            cur2.execute(
+                "SELECT receipt_text FROM receipts WHERE id = ?",
+                (rec_id,)
+            )
+            row = cur2.fetchone()
+            conn2.close()
+
+            if not row:
+                messagebox.showerror("Error", "Receipt not found in database.", parent=detail)
+                detail.lift(); detail.focus_force()
+                return
+
+            receipt_text = row[0]
+
+            # Open preview window
+            prev = tk.Toplevel(detail)
+            prev.title(f"Receipt #{rec_id}")
+            center_window(prev, 600, 550)
+
+            prev.transient(detail)
+            prev.grab_set()
+            prev.lift()
+            prev.focus_force()
+
+            tk.Label(prev, text=f"Receipt #{rec_id}", font=("Arial", 14, "bold")).pack(pady=8)
+
+            txt = tk.Text(prev, font=("Courier New", 11), wrap="word", bg="#f9f9f9")
+            txt.pack(fill="both", expand=True, padx=10, pady=10)
+            txt.insert("1.0", receipt_text)
+            txt.config(state="disabled")
+
+            tk.Button(prev, text="Close", width=12, command=prev.destroy).pack(pady=8)
+
+            prev.wait_window()
+
+        tree_det.bind("<Double-1>", preview_selected_receipt)
+
+        tk.Button(detail, text="Close", width=12, command=detail.destroy).pack(pady=5)
+
+    # ===== DOUBLE-CLICK ON SUMMARY ROW TO OPEN DETAILS =====
+
+    def on_tree_double_click(event):
+        sel = tree.selection()
+        if not sel:
+            return
+        item = tree.item(sel[0])
+        recipe_name = item["values"][0]
+        if not recipe_name:
+            return
+        show_recipe_details(recipe_name)
+
+    tree.bind("<Double-1>", on_tree_double_click)
+
+    # ===== GENERATE BUTTON CALLBACK =====
+    def on_generate_click():
+        load_report()
+
+    tk.Button(
+        filter_frame,
+        text="Generate Report",
+        command=on_generate_click,
+        width=16
+    ).grid(row=0, column=2, padx=5)
+
+    # Load initial report (Today)
     load_report()
 
-    # Close button
+    # Close button for main window
     tk.Button(
         win,
-        text="Close",
-        width=12,
+        text="Close Reports",
+        width=14,
         command=win.destroy
     ).pack(pady=5)

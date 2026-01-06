@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
 import os
+import tempfile
 from datetime import datetime
 from utils import center_window
 
@@ -54,7 +55,7 @@ def save_receipt_to_db(recipe_name, qty, customer_name, total, receipt_text):
 
 
 def ensure_cost_column():
-    """Ensure ingredients has cost_per_unit column (for cost estimation)."""
+    """Ensure ingredients has cost_per_unit column (for internal use later if needed)."""
     conn = sqlite3.connect("bakery.db")
     cur = conn.cursor()
     cur.execute("PRAGMA table_info(ingredients)")
@@ -65,10 +66,43 @@ def ensure_cost_column():
     conn.close()
 
 
+def print_receipt_file(file_path, receipt_text, parent):
+    """
+    Try to send a receipt to the printer.
+    On Windows: uses os.startfile(..., 'print').
+    If file_path doesn't exist, we create a temporary file from receipt_text.
+    On other OS: show info message.
+    """
+    if os.name == "nt":  # Windows
+        path_to_print = file_path
+
+        # If file does not exist, create a temporary one
+        if not path_to_print or not os.path.exists(path_to_print):
+            try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8") as tmp:
+                    tmp.write(receipt_text)
+                    path_to_print = tmp.name
+            except Exception as e:
+                messagebox.showerror("Print Error", f"Could not create temporary file:\n{e}", parent=parent)
+                return
+
+        try:
+            os.startfile(path_to_print, "print")
+        except Exception as e:
+            messagebox.showerror("Print Error", f"Could not send receipt to printer:\n{e}", parent=parent)
+    else:
+        messagebox.showinfo(
+            "Print",
+            "Automatic printing is only supported on Windows.\n"
+            "Please open the receipt text file and print it from your text editor.",
+            parent=parent
+        )
+
+
 def generate_receipt(recipe_name, qty, customer_name, selling_price, ingredients_used):
     """
     ingredients_used: list of (name, qty_used, unit, cost_per_unit)
-    This version hides cost & profit from the customer receipt.
+    Customer receipt: NO cost, NO profit shown.
     """
     os.makedirs("receipts", exist_ok=True)
 
@@ -88,7 +122,6 @@ def generate_receipt(recipe_name, qty, customer_name, selling_price, ingredients
     lines.append("")
     lines.append("Ingredients Used:")
 
-    # We do NOT show cost or profit to customer
     for name, qty_used, unit, cpu in ingredients_used:
         qty_used = safe_float(qty_used)
         lines.append(f"- {name}: {qty_used} {unit}")
@@ -103,17 +136,16 @@ def generate_receipt(recipe_name, qty, customer_name, selling_price, ingredients
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(receipt_text)
 
-    # Save to DB (we still store only total sale, not profit)
+    # Save to DB (total sale only, no profit)
     save_receipt_to_db(recipe_name, qty, customer_name, total_sale, receipt_text)
 
     return file_path, receipt_text
 
 
-
 def show_receipt_preview(parent, receipt_text, file_path):
     preview = tk.Toplevel(parent)
     preview.title("Receipt Preview")
-    center_window(preview, 550, 550)
+    center_window(preview, 550, 650)
 
     preview.transient(parent)
     preview.grab_set()
@@ -131,7 +163,23 @@ def show_receipt_preview(parent, receipt_text, file_path):
 
     tk.Label(preview, text=f"Saved to: {file_path}", font=("Arial", 9)).pack(pady=5)
 
-    tk.Button(preview, text="Close", width=15, command=preview.destroy).pack(pady=10)
+    # --- Buttons frame: Print + Close ---
+    btn_frame = tk.Frame(preview)
+    btn_frame.pack(pady=10)
+
+    tk.Button(
+        btn_frame,
+        text="Print",
+        width=12,
+        command=lambda: print_receipt_file(file_path, receipt_text, preview)
+    ).grid(row=0, column=0, padx=5)
+
+    tk.Button(
+        btn_frame,
+        text="Close",
+        width=12,
+        command=preview.destroy
+    ).grid(row=0, column=1, padx=5)
 
     preview.wait_window()
 
@@ -263,7 +311,7 @@ def open_make_cake():
         conn.commit()
         conn.close()
 
-        # --- Generate and show receipt ---
+        # --- Generate and show receipt (with Print button) ---
         file_path, receipt_text = generate_receipt(
             recipe_name,
             qty,
@@ -274,7 +322,7 @@ def open_make_cake():
 
         show_receipt_preview(win, receipt_text, file_path)
 
-        # Reset quantity (optional)
+        # Reset quantity & customer
         qty_entry.delete(0, tk.END)
         customer_entry.delete(0, tk.END)
         win.lift()
