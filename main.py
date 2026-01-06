@@ -21,7 +21,7 @@ def main():
     root.title("Bakery Shop")
 
     # Splash-style window size
-    center_window(root, 600, 850)
+    center_window(root, 700, 850)
     root.config(bg="#f2ebe3")  # light bakery background
 
     # ---------- LOAD IMAGES ----------
@@ -33,9 +33,10 @@ def main():
     orders_img = load_image("images/orders.png", (128, 128))
     receipts_img = load_image("images/receipts.png", (128, 128))
     reports_img = load_image("images/reports.png", (128, 128))
+    exit_img = load_image("images/exit.png", (128, 128))
 
     # Keep references so images don’t disappear
-    root.image_refs = [logo_img, inventory_img, recipes_img, orders_img, receipts_img, reports_img]
+    root.image_refs = [logo_img, inventory_img, recipes_img, orders_img, receipts_img, reports_img, exit_img]
 
     # ---------- TOP SPLASH HEADER ----------
     header_frame = tk.Frame(root, bg="#f2ebe3")
@@ -161,8 +162,8 @@ def main():
 
     tk.Button(
         inv_frame,
-        image=inventory_img,
-        command=open_inventory,
+        image=reports_img,
+        command=open_reports,
         bd=0,
         highlightthickness=0,
         activebackground="#f2ebe3",
@@ -170,7 +171,28 @@ def main():
     ).pack()
     tk.Label(
         inv_frame,
-        text="Inventory",
+        text="Reports",
+        font=("Arial", 12, "bold"),
+        bg="#f2ebe3",
+        fg="#3b2a1a"
+    ).pack(pady=6)
+
+    # Exit (Top-Left)
+    inv_frame = tk.Frame(dashboard_frame, bg="#f2ebe3")
+    inv_frame.grid(row=1, column=2, padx=60, pady=40)
+
+    tk.Button(
+        inv_frame,
+        image=exit_img,
+        command=exit(),
+        bd=0,
+        highlightthickness=0,
+        activebackground="#f2ebe3",
+        bg="#f2ebe3"
+    ).pack()
+    tk.Label(
+        inv_frame,
+        text="Reports",
         font=("Arial", 12, "bold"),
         bg="#f2ebe3",
         fg="#3b2a1a"
