@@ -50,6 +50,16 @@ def init_db():
         )
     """)
 
+    # --- USERS table (LOGIN SYSTEM) ---
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT DEFAULT 'staff'
+        )
+    """)
+
     conn.commit()
     conn.close()
     print("Database initialized successfully.")

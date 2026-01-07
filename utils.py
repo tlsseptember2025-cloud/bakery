@@ -5,6 +5,8 @@ def center_window(win, width=800, height=500):
     width  : window width
     height : window height
     """
+    win.update_idletasks()  # ✅ IMPORTANT FIX
+
     screen_width = win.winfo_screenwidth()
     screen_height = win.winfo_screenheight()
 

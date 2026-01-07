@@ -6,6 +6,19 @@ import tempfile
 from datetime import datetime
 from utils import center_window
 
+# ----- Optional Word (docx) support -----
+try:
+    from docx import Document
+    from docx.shared import Inches
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
+
+# ----- Base paths -----
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+RECEIPTS_DIR = os.path.join(BASE_DIR, "receipts")
+LOGO_PATH = os.path.join(BASE_DIR, "images", "logo.png")
+
 
 # ===================== HELPERS =====================
 
@@ -35,7 +48,7 @@ def ensure_receipts_table():
     conn.close()
 
 
-def save_receipt_to_db(recipe_name, qty, customer_name, total, receipt_text):
+def save_receipt_to_db(recipe_name, qty, customer_name, total, receipt_text, created_at):
     ensure_receipts_table()
     conn = sqlite3.connect("bakery.db")
     cur = conn.cursor()
@@ -48,14 +61,14 @@ def save_receipt_to_db(recipe_name, qty, customer_name, total, receipt_text):
         customer_name,
         total,
         receipt_text,
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        created_at
     ))
     conn.commit()
     conn.close()
 
 
 def ensure_cost_column():
-    """Ensure ingredients has cost_per_unit column (for internal use later if needed)."""
+    """Ensure ingredients has cost_per_unit column (for possible internal reports)."""
     conn = sqlite3.connect("bakery.db")
     cur = conn.cursor()
     cur.execute("PRAGMA table_info(ingredients)")
@@ -66,86 +79,217 @@ def ensure_cost_column():
     conn.close()
 
 
-def print_receipt_file(file_path, receipt_text, parent):
+# ===================== RECEIPT GENERATION =====================
+
+def generate_text_receipt(recipe_name, qty, customer_name, selling_price, ingredients_used):
     """
-    Try to send a receipt to the printer.
-    On Windows: uses os.startfile(..., 'print').
-    If file_path doesn't exist, we create a temporary file from receipt_text.
-    On other OS: show info message.
+    Creates the TEXT receipt, saves it, and returns:
+      file_path, receipt_text, total_sale, created_at
     """
-    if os.name == "nt":  # Windows
-        path_to_print = file_path
+    os.makedirs(RECEIPTS_DIR, exist_ok=True)
 
-        # If file does not exist, create a temporary one
-        if not path_to_print or not os.path.exists(path_to_print):
-            try:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8") as tmp:
-                    tmp.write(receipt_text)
-                    path_to_print = tmp.name
-            except Exception as e:
-                messagebox.showerror("Print Error", f"Could not create temporary file:\n{e}", parent=parent)
-                return
-
-        try:
-            os.startfile(path_to_print, "print")
-        except Exception as e:
-            messagebox.showerror("Print Error", f"Could not send receipt to printer:\n{e}", parent=parent)
-    else:
-        messagebox.showinfo(
-            "Print",
-            "Automatic printing is only supported on Windows.\n"
-            "Please open the receipt text file and print it from your text editor.",
-            parent=parent
-        )
-
-
-def generate_receipt(recipe_name, qty, customer_name, selling_price, ingredients_used):
-    """
-    ingredients_used: list of (name, qty_used, unit, cost_per_unit)
-    Customer receipt: NO cost, NO profit shown.
-    """
-    os.makedirs("receipts", exist_ok=True)
-
+    # Safe filename (no weird chars)
+    safe_name = "".join(ch for ch in recipe_name if ch.isalnum() or ch in (" ", "_", "-")).strip()
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    file_path = f"receipts/{recipe_name}_{timestamp}.txt"
+    file_path = os.path.join(RECEIPTS_DIR, f"{safe_name}_{timestamp}.txt")
 
     total_sale = selling_price * qty
+    created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Layout: wider, with top padding and left margin
+    page_width = 80          # characters
+    left_margin = " " * 6    # spaces from left edge
+    top_padding_lines = 4    # blank lines at top for some space
+
+    def center(text: str) -> str:
+        return left_margin + text.center(page_width)
+
     lines = []
 
-    lines.append("BAKERY RECEIPT")
-    lines.append("=" * 35)
-    lines.append(f"Recipe      : {recipe_name}")
-    lines.append(f"Customer    : {customer_name if customer_name else 'N/A'}")
-    lines.append(f"Quantity    : {qty}")
-    lines.append(f"Price/Cake  : {selling_price:.2f}")
-    lines.append(f"Total Sale  : {total_sale:.2f}")
-    lines.append("")
-    lines.append("Ingredients Used:")
+    # Top blank space
+    for _ in range(top_padding_lines):
+        lines.append("")
 
+    lines.append(left_margin + "=" * page_width)
+    lines.append(center("MY BAKERY"))
+    lines.append(center("Fresh Cakes & Pastries"))
+    lines.append(left_margin + "=" * page_width)
+
+    lines.append(left_margin + f"Date     : {created_at}")
+    lines.append(left_margin + f"Customer : {customer_name if customer_name else 'N/A'}")
+    lines.append(left_margin + "-" * page_width)
+
+    lines.append(left_margin + f"Item     : {recipe_name}")
+    lines.append(left_margin + f"Quantity : {qty}")
+    lines.append(left_margin + f"Price    : {selling_price:.2f}")
+    lines.append(left_margin + f"TOTAL    : {total_sale:.2f}")
+
+    lines.append(left_margin + "-" * page_width)
+    lines.append(left_margin + "Ingredients Used:")
     for name, qty_used, unit, cpu in ingredients_used:
         qty_used = safe_float(qty_used)
-        lines.append(f"- {name}: {qty_used} {unit}")
+        lines.append(left_margin + f"- {name}: {qty_used} {unit}")
 
-    lines.append("")
-    lines.append(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append("Thank you!")
+    lines.append(left_margin + "-" * page_width)
+    lines.append(center("Conditions for ReturnsTo be eligible for a return"))
+    lines.append(center("Conditions for ReturnsTo be eligible for a return"))
+    lines.append(center("Conditions for ReturnsTo be eligible for a return"))
+    lines.append(center("Conditions for ReturnsTo be eligible for a return"))
+    lines.append(center("Conditions for ReturnsTo be eligible for a return"))
+    lines.append(left_margin + "=" * page_width)
+    lines.append(left_margin + "-" * page_width)
+    lines.append(center("Thank you! Please visit again."))
+    lines.append(left_margin + "=" * page_width)
 
     receipt_text = "\n".join(lines)
 
-    # Save to file
+    # Save text file
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(receipt_text)
 
-    # Save to DB (total sale only, no profit)
-    save_receipt_to_db(recipe_name, qty, customer_name, total_sale, receipt_text)
+    # Save to DB
+    save_receipt_to_db(recipe_name, qty, customer_name, total_sale, receipt_text, created_at)
 
-    return file_path, receipt_text
+    return file_path, receipt_text, total_sale, created_at
 
 
-def show_receipt_preview(parent, receipt_text, file_path):
+def create_docx_receipt(recipe_name, qty, customer_name, total_sale, created_at):
+    """
+    Create a nicely formatted Word (.docx) receipt with logo and return its absolute path.
+    Requires python-docx to be installed.
+    """
+    if not DOCX_AVAILABLE:
+        return None
+
+    os.makedirs(RECEIPTS_DIR, exist_ok=True)
+    safe_name = "".join(ch for ch in recipe_name if ch.isalnum() or ch in (" ", "_", "-")).strip()
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    docx_path = os.path.join(RECEIPTS_DIR, f"{safe_name}_{timestamp}.docx")
+
+    doc = Document()
+
+    # Logo (if exists)
+    if os.path.exists(LOGO_PATH):
+        doc.add_picture(LOGO_PATH, width=Inches(1.2))
+
+    # Title
+    title = doc.add_paragraph()
+    run = title.add_run("MY BAKERY")
+    run.bold = True
+    title.alignment = 1  # center
+
+    subtitle = doc.add_paragraph("Fresh Cakes & Pastries")
+    subtitle.alignment = 1
+
+    doc.add_paragraph("")  # blank line
+
+    # Basic info
+    info_p = doc.add_paragraph()
+    info_p.add_run("Date: ").bold = True
+    info_p.add_run(created_at)
+    info_p.add_run("\nCustomer: ").bold = True
+    info_p.add_run(customer_name if customer_name else "N/A")
+
+    doc.add_paragraph("")  # blank line
+
+    # Table with order details
+    table = doc.add_table(rows=1, cols=4)
+    hdr_cells = table.rows[0].cells
+    hdr_cells[0].text = "Item"
+    hdr_cells[1].text = "Qty"
+    hdr_cells[2].text = "Price"
+    hdr_cells[3].text = "Total"
+
+    row_cells = table.add_row().cells
+    row_cells[0].text = recipe_name
+    row_cells[1].text = str(qty)
+    row_cells[2].text = f"{total_sale / qty:.2f}" if qty else "0.00"
+    row_cells[3].text = f"{total_sale:.2f}"
+
+    doc.add_paragraph("")  # blank line
+
+    total_p = doc.add_paragraph()
+    run_total = total_p.add_run(f"Grand Total: {total_sale:.2f}")
+    run_total.bold = True
+
+    doc.add_paragraph("")  # blank line
+    doc.add_paragraph("Conditions for ReturnsTo be eligible for a return")
+    doc.add_paragraph("Conditions for ReturnsTo be eligible for a return")
+    doc.add_paragraph("Conditions for ReturnsTo be eligible for a return")
+    doc.add_paragraph("Conditions for ReturnsTo be eligible for a return")
+    doc.add_paragraph("Conditions for ReturnsTo be eligible for a return")
+    doc.add_paragraph("")
+    doc.add_paragraph("")
+    footer = doc.add_paragraph("Thank you for your purchase!")
+    footer.alignment = 1
+
+    doc.save(docx_path)
+
+    if os.path.exists(docx_path):
+        return docx_path
+    return None
+
+
+# ===================== OPEN FOR PRINTING & PREVIEW =====================
+
+def open_for_printing(file_txt_path, receipt_text, parent,
+                      recipe_name, qty, customer_name, total_sale, created_at):
+    """
+    Instead of printing silently, open the receipt in Word or Notepad
+    so the user can use the normal Print dialog and choose the printer.
+    """
+    if os.name != "nt":
+        messagebox.showinfo(
+            "Open for Printing",
+            "Automatic opening is best supported on Windows.\n"
+            "On other systems, please open the file manually and print.",
+            parent=parent
+        )
+        return
+
+    # 1) Try to create & open DOCX in Word (nicer, with logo)
+    docx_path = None
+    if DOCX_AVAILABLE:
+        try:
+            docx_path = create_docx_receipt(recipe_name, qty, customer_name, total_sale, created_at)
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not create Word receipt:\n{e}", parent=parent)
+            docx_path = None
+
+    if docx_path and os.path.exists(docx_path):
+        try:
+            os.startfile(os.path.abspath(docx_path))  # just open (user prints from Word)
+            return
+        except Exception as e:
+            messagebox.showinfo(
+                "Open for Printing",
+                "Could not open Word receipt. I will open the text receipt instead.",
+                parent=parent
+            )
+
+    # 2) Fallback: open text receipt in Notepad
+    path_to_open = os.path.abspath(file_txt_path) if file_txt_path else None
+    if not path_to_open or not os.path.exists(path_to_open):
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8") as tmp:
+                tmp.write(receipt_text)
+                path_to_open = tmp.name
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not create temporary text file:\n{e}", parent=parent)
+            return
+
+    try:
+        os.startfile(path_to_open)  # opens in Notepad → user uses File > Print
+    except Exception as e:
+        messagebox.showerror("Error", f"Could not open receipt file:\n{e}", parent=parent)
+
+
+def show_receipt_preview(parent, receipt_text, file_path,
+                         recipe_name, qty, customer_name, total_sale, created_at):
+    """Preview window with 'Open for Printing' button."""
     preview = tk.Toplevel(parent)
     preview.title("Receipt Preview")
-    center_window(preview, 550, 650)
+    center_window(preview, 900, 900)
 
     preview.transient(parent)
     preview.grab_set()
@@ -161,17 +305,23 @@ def show_receipt_preview(parent, receipt_text, file_path):
     text_box.insert("1.0", receipt_text)
     text_box.config(state="disabled")
 
-    tk.Label(preview, text=f"Saved to: {file_path}", font=("Arial", 9)).pack(pady=5)
-
-    # --- Buttons frame: Print + Close ---
     btn_frame = tk.Frame(preview)
     btn_frame.pack(pady=10)
 
     tk.Button(
         btn_frame,
-        text="Print",
-        width=12,
-        command=lambda: print_receipt_file(file_path, receipt_text, preview)
+        text="Open for Printing",
+        width=18,
+        command=lambda: open_for_printing(
+            file_path,
+            receipt_text,
+            preview,
+            recipe_name,
+            qty,
+            customer_name,
+            total_sale,
+            created_at
+        )
     ).grid(row=0, column=0, padx=5)
 
     tk.Button(
@@ -311,8 +461,8 @@ def open_make_cake():
         conn.commit()
         conn.close()
 
-        # --- Generate and show receipt (with Print button) ---
-        file_path, receipt_text = generate_receipt(
+        # --- Generate and show receipt (text + openable docx) ---
+        file_path, receipt_text, total_sale, created_at = generate_text_receipt(
             recipe_name,
             qty,
             customer_name,
@@ -320,7 +470,16 @@ def open_make_cake():
             used_ingredients_for_receipt
         )
 
-        show_receipt_preview(win, receipt_text, file_path)
+        show_receipt_preview(
+            win,
+            receipt_text,
+            file_path,
+            recipe_name,
+            qty,
+            customer_name,
+            total_sale,
+            created_at
+        )
 
         # Reset quantity & customer
         qty_entry.delete(0, tk.END)
@@ -335,4 +494,3 @@ def open_make_cake():
         width=22,
         command=make_cake
     ).pack(pady=20)
-
