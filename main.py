@@ -153,7 +153,7 @@ if __name__ == "__main__":
     # 🔄 Auto-backup every 30 minutes (time-based only)
     backup_scheduler = BackupScheduler(
         root=root,
-        interval_minutes=30,   # change to 15 / 60 if needed
+        interval_minutes=90,   # change to 15 / 60 if needed
         backup_func=backup_database
     )
 
