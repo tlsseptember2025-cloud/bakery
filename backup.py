@@ -4,10 +4,10 @@ from datetime import datetime
 
 DB_NAME = "bakery.db"
 BACKUP_DIR = "backups"
+LAST_BACKUP_FILE = "last_backup.txt"
 
 
 def backup_database():
-    """Create a timestamped database backup."""
     if not os.path.isfile(DB_NAME):
         return
 
@@ -18,6 +18,11 @@ def backup_database():
 
     try:
         shutil.copy2(DB_NAME, backup_path)
-        print(f"[AUTO BACKUP] {backup_path}")
+
+        # ✅ Update last backup timestamp
+        with open(LAST_BACKUP_FILE, "w") as f:
+            f.write(datetime.now().isoformat())
+
+        print(f"[BACKUP OK] {backup_path}")
     except Exception as e:
         print(f"[BACKUP ERROR] {e}")

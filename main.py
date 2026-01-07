@@ -1,5 +1,7 @@
 import tkinter as tk
 import sys
+import os
+import datetime
 from tkinter import messagebox
 from PIL import Image, ImageTk
 
@@ -7,7 +9,7 @@ from utils import center_window
 from login_ui import LoginFrame
 from restore_backup import RestoreBackupWindow
 from backup import backup_database
-from backup_scheduler import BackupScheduler
+from backup_scheduler import SixHourBackupScheduler
 from auto_logout import AutoLogoutManager
 
 from inventory import open_inventory
@@ -17,7 +19,10 @@ from receipts_history import open_receipts_history
 from reports import open_reports
 
 
-# ---------- IMAGE HELPER ----------
+LAST_BACKUP_FILE = "last_backup.txt"
+
+
+# ---------- HELPERS ----------
 
 def load_image(path, size):
     img = Image.open(path)
@@ -25,10 +30,42 @@ def load_image(path, size):
     return ImageTk.PhotoImage(img)
 
 
+def format_date_ddmmyyyy(date_obj):
+    return date_obj.strftime("%d/%m/%Y")
+
+
+def get_last_backup_text():
+    if not os.path.exists(LAST_BACKUP_FILE):
+        return "Never"
+
+    try:
+        with open(LAST_BACKUP_FILE, "r") as f:
+            raw = f.read().strip()
+
+        # Handle datetime OR date-only
+        if "T" in raw:
+            last_dt = datetime.datetime.fromisoformat(raw)
+            last_date = last_dt.date()
+        else:
+            last_date = datetime.date.fromisoformat(raw)
+
+    except Exception:
+        return "Unknown"
+
+    today = datetime.date.today()
+
+    if last_date == today:
+        return "Today"
+    elif last_date == today - datetime.timedelta(days=1):
+        return "Yesterday"
+    else:
+        return format_date_ddmmyyyy(last_date)
+
+
 auto_logout_manager = None
 
 
-# ---------- DASHBOARD FRAME ----------
+# ---------- DASHBOARD ----------
 
 class DashboardFrame(tk.Frame):
     def __init__(self, master, role):
@@ -41,7 +78,7 @@ class DashboardFrame(tk.Frame):
 
         self.pack(fill="both", expand=True)
 
-        # ⏱️ AUTO LOGOUT (5 MIN)
+        # ⏱️ AUTO LOGOUT (5 MINUTES)
         auto_logout_manager = AutoLogoutManager(
             root=master,
             timeout_minutes=5,
@@ -50,7 +87,7 @@ class DashboardFrame(tk.Frame):
 
         # ---------- HEADER ----------
         header = tk.Frame(self, bg="#f2ebe3")
-        header.pack(pady=10)
+        header.pack(pady=8)
 
         logo = load_image("images/logo.png", (120, 120))
         self.logo_ref = logo
@@ -63,7 +100,7 @@ class DashboardFrame(tk.Frame):
             font=("Arial", 22, "bold"),
             bg="#f2ebe3",
             fg="#5a3b24"
-        ).pack(pady=5)
+        ).pack(pady=4)
 
         tk.Label(
             header,
@@ -72,6 +109,16 @@ class DashboardFrame(tk.Frame):
             bg="#f2ebe3",
             fg="#7b5b3b"
         ).pack()
+
+        # ✅ LAST BACKUP LABEL
+        self.backup_label = tk.Label(
+            header,
+            text=f"Last backup: {get_last_backup_text()}",
+            font=("Arial", 10),
+            bg="#f2ebe3",
+            fg="#6b5a4a"
+        )
+        self.backup_label.pack(pady=2)
 
         # ---------- GRID ----------
         grid = tk.Frame(self, bg="#f2ebe3")
@@ -111,11 +158,12 @@ class DashboardFrame(tk.Frame):
         reports_img = load_image("images/reports.png", (96, 96))
         logout_img = load_image("images/exit.png", (96, 96))
         backup_img = load_image("images/restore.png", (96, 96))
+        restore_img = load_image("images/restore.png", (96, 96))
 
         self.img_refs = [
             inventory, recipes, orders,
             receipts, reports_img,
-            logout_img, backup_img
+            logout_img, backup_img, restore_img
         ]
 
         # ---------- ROW 0 ----------
@@ -133,24 +181,16 @@ class DashboardFrame(tk.Frame):
 
         # ---------- ROW 2 (ADMIN ONLY) ----------
         if role == "admin":
-            dash_item(
-                2, 0,
-                backup_img,
-                "Backup Now",
-                self.manual_backup
-            )
-
-            dash_item(
-                2, 1,
-                backup_img,
-                "Restore Backup",
-                lambda: RestoreBackupWindow(self.master)
-            )
+            dash_item(2, 0, backup_img, "Backup Now", self.manual_backup)
+            dash_item(2, 1,restore_img,"Restore Backup",lambda: RestoreBackupWindow(self.master))
 
     # ---------- ACTIONS ----------
 
     def manual_backup(self):
         backup_database()
+        self.backup_label.config(
+            text=f"Last backup: {get_last_backup_text()}"
+        )
         messagebox.showinfo(
             "Backup Complete",
             "Database backup created successfully."
@@ -183,13 +223,12 @@ if __name__ == "__main__":
     root = tk.Tk()
     root.title("Bakery System")
 
-    # 🔄 AUTO BACKUP EVERY 30 MINUTES
-    backup_scheduler = BackupScheduler(
+    # 🔄 Backup every 6 hours (with missed-backup popup)
+    backup_scheduler = SixHourBackupScheduler(
         root=root,
-        interval_minutes=30,
-        backup_func=backup_database
+        backup_func=backup_database,
+        check_interval_minutes=10
     )
 
     show_login()
     root.mainloop()
-
