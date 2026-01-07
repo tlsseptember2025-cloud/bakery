@@ -5,66 +5,55 @@ from auth import authenticate_user
 from utils import center_window
 
 
-def login_window(on_success):
-    root = tk.Tk()
-    root.title("Bakery Login")
-    root.resizable(False, False)
-    root.config(bg="#f2ebe3")
+class LoginFrame(tk.Frame):
+    def __init__(self, master, on_login):
+        super().__init__(master, bg="#f2ebe3")
+        self.on_login = on_login
 
-    center_window(root, 320, 220)
+        master.geometry("360x260")
+        master.resizable(False, False)
+        center_window(master, 360, 260)
 
-    # ---------- HEADER ----------
-    tk.Label(
-        root,
-        text="Bakery Login",
-        font=("Arial", 14, "bold"),
-        bg="#f2ebe3",
-        fg="#5a3b24"
-    ).pack(pady=15)
+        self.place(relx=0.5, rely=0.5, anchor="center")
 
-    # ---------- FORM ----------
-    form = tk.Frame(root, bg="#f2ebe3")
-    form.pack(pady=5)
+        tk.Label(
+            self,
+            text="Bakery Login",
+            font=("Arial", 18, "bold"),
+            bg="#f2ebe3",
+            fg="#5a3b24"
+        ).pack(pady=20)
 
-    tk.Label(form, text="Username", bg="#f2ebe3").grid(row=0, column=0, sticky="w")
-    username_entry = tk.Entry(form, width=25)
-    username_entry.grid(row=1, column=0, pady=5)
+        form = tk.Frame(self, bg="#f2ebe3")
+        form.pack()
 
-    tk.Label(form, text="Password", bg="#f2ebe3").grid(row=2, column=0, sticky="w")
-    password_entry = tk.Entry(form, width=25, show="*")
-    password_entry.grid(row=3, column=0, pady=5)
+        tk.Label(form, text="Username", bg="#f2ebe3").pack(anchor="w")
+        self.username = tk.Entry(form, width=28)
+        self.username.pack(pady=4)
 
-    # ---------- HELPERS ----------
-    def reset_login_form():
-        username_entry.delete(0, tk.END)
-        password_entry.delete(0, tk.END)
-        username_entry.focus()
+        tk.Label(form, text="Password", bg="#f2ebe3").pack(anchor="w")
+        self.password = tk.Entry(form, width=28, show="*")
+        self.password.pack(pady=4)
 
-    # ---------- ACTION ----------
-    def login():
-        username = username_entry.get().strip()
-        password = password_entry.get().strip()
+        tk.Button(
+            self,
+            text="Login",
+            width=18,
+            bg="#d9b382",
+            command=self.login
+        ).pack(pady=18)
 
-        if not username or not password:
-            messagebox.showwarning("Missing Info", "Please enter username and password")
-            return
+        self.username.focus()
 
-        user = authenticate_user(username, password)
+    def login(self):
+        user = authenticate_user(
+            self.username.get().strip(),
+            self.password.get().strip()
+        )
+
         if user:
-            reset_login_form()     # ✅ clear BEFORE hiding
-            root.withdraw()
-            on_success(user[0], root)
+            self.destroy()
+            self.on_login(user[0])   # role
         else:
             messagebox.showerror("Login Failed", "Invalid username or password")
-
-    tk.Button(
-        root,
-        text="Login",
-        width=15,
-        command=login,
-        bg="#d9b382"
-    ).pack(pady=15)
-
-    reset_login_form()
-    root.mainloop()
 
