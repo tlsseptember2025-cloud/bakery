@@ -1,5 +1,4 @@
 import tkinter as tk
-import sys
 import os
 import datetime
 from tkinter import messagebox
@@ -20,6 +19,10 @@ from reports import open_reports
 
 
 LAST_BACKUP_FILE = "last_backup.txt"
+BACKUP_INTERVAL_HOURS = 6
+
+auto_logout_manager = None
+backup_scheduler = None
 
 
 # ---------- HELPERS ----------
@@ -30,39 +33,65 @@ def load_image(path, size):
     return ImageTk.PhotoImage(img)
 
 
-def format_date_ddmmyyyy(date_obj):
-    return date_obj.strftime("%d/%m/%Y")
+def format_datetime_ddmmyyyy_hhmm(dt):
+    return dt.strftime("%d/%m/%Y %H:%M")
 
 
-def get_last_backup_text():
+def format_time_hhmm(dt):
+    return dt.strftime("%H:%M")
+
+
+def get_last_backup_datetime():
     if not os.path.exists(LAST_BACKUP_FILE):
-        return "Never"
+        return None
 
     try:
         with open(LAST_BACKUP_FILE, "r") as f:
             raw = f.read().strip()
 
-        # Handle datetime OR date-only
         if "T" in raw:
-            last_dt = datetime.datetime.fromisoformat(raw)
-            last_date = last_dt.date()
+            return datetime.datetime.fromisoformat(raw)
         else:
-            last_date = datetime.date.fromisoformat(raw)
-
+            return datetime.datetime.combine(
+                datetime.date.fromisoformat(raw),
+                datetime.datetime.min.time()
+            )
     except Exception:
-        return "Unknown"
+        return None
 
-    today = datetime.date.today()
 
-    if last_date == today:
-        return "Today"
-    elif last_date == today - datetime.timedelta(days=1):
-        return "Yesterday"
+def get_last_backup_text():
+    last_dt = get_last_backup_datetime()
+    if not last_dt:
+        return "Never"
+
+    now = datetime.datetime.now()
+    today = now.date()
+
+    if last_dt.date() == today:
+        # ✅ Today → show time only
+        return format_time_hhmm(last_dt)
     else:
-        return format_date_ddmmyyyy(last_date)
+        # ✅ Older → show full date + time
+        return format_datetime_ddmmyyyy_hhmm(last_dt)
 
 
-auto_logout_manager = None
+def get_next_backup_due_text():
+    last_dt = get_last_backup_datetime()
+    if not last_dt:
+        return "Now"
+
+    next_due = last_dt + datetime.timedelta(hours=BACKUP_INTERVAL_HOURS)
+    now = datetime.datetime.now()
+
+    if now >= next_due:
+        return "Now"
+
+    remaining = next_due - now
+    hours = remaining.seconds // 3600
+    minutes = (remaining.seconds % 3600) // 60
+
+    return f"{hours}h {minutes}m"
 
 
 # ---------- DASHBOARD ----------
@@ -78,7 +107,7 @@ class DashboardFrame(tk.Frame):
 
         self.pack(fill="both", expand=True)
 
-        # ⏱️ AUTO LOGOUT (5 MINUTES)
+        # ⏱️ AUTO LOGOUT (5 MIN)
         auto_logout_manager = AutoLogoutManager(
             root=master,
             timeout_minutes=5,
@@ -110,15 +139,25 @@ class DashboardFrame(tk.Frame):
             fg="#7b5b3b"
         ).pack()
 
-        # ✅ LAST BACKUP LABEL
-        self.backup_label = tk.Label(
+        self.last_backup_label = tk.Label(
             header,
             text=f"Last backup: {get_last_backup_text()}",
             font=("Arial", 10),
             bg="#f2ebe3",
             fg="#6b5a4a"
         )
-        self.backup_label.pack(pady=2)
+        self.last_backup_label.pack(pady=1)
+
+        self.next_backup_label = tk.Label(
+            header,
+            text=f"Next backup due in: {get_next_backup_due_text()}",
+            font=("Arial", 10),
+            bg="#f2ebe3",
+            fg="#6b5a4a"
+        )
+        self.next_backup_label.pack(pady=1)
+
+        self.update_backup_labels()
 
         # ---------- GRID ----------
         grid = tk.Frame(self, bg="#f2ebe3")
@@ -150,14 +189,13 @@ class DashboardFrame(tk.Frame):
                 fg="#3b2a1a"
             ).pack(pady=4)
 
-        # ---------- ICONS ----------
         inventory = load_image("images/inventory.png", (96, 96))
         recipes = load_image("images/recipes.png", (96, 96))
         orders = load_image("images/orders.png", (96, 96))
         receipts = load_image("images/receipts.png", (96, 96))
         reports_img = load_image("images/reports.png", (96, 96))
         logout_img = load_image("images/exit.png", (96, 96))
-        backup_img = load_image("images/restore.png", (96, 96))
+        backup_img = load_image("images/backup.png", (96, 96))
         restore_img = load_image("images/restore.png", (96, 96))
 
         self.img_refs = [
@@ -166,12 +204,10 @@ class DashboardFrame(tk.Frame):
             logout_img, backup_img, restore_img
         ]
 
-        # ---------- ROW 0 ----------
         dash_item(0, 0, inventory, "Inventory", open_inventory)
         dash_item(0, 1, recipes, "Recipes", open_recipes)
         dash_item(0, 2, orders, "Make Cake", open_make_cake)
 
-        # ---------- ROW 1 ----------
         dash_item(1, 0, receipts, "Receipts History", open_receipts_history)
 
         if role == "admin":
@@ -179,30 +215,44 @@ class DashboardFrame(tk.Frame):
 
         dash_item(1, 2, logout_img, "Logout", self.logout)
 
-        # ---------- ROW 2 (ADMIN ONLY) ----------
         if role == "admin":
             dash_item(2, 0, backup_img, "Backup Now", self.manual_backup)
-            dash_item(2, 1,restore_img,"Restore Backup",lambda: RestoreBackupWindow(self.master))
+            dash_item(
+                2, 1,
+                restore_img,
+                "Restore",
+                lambda: RestoreBackupWindow(self.master)
+            )
+
+    # ---------- BACKUP LABEL REFRESH ----------
+
+    def update_backup_labels(self):
+        self.last_backup_label.config(
+            text=f"Last backup: {get_last_backup_text()}"
+        )
+        self.next_backup_label.config(
+            text=f"Next backup due in: {get_next_backup_due_text()}"
+        )
+        self.after(60_000, self.update_backup_labels)
 
     # ---------- ACTIONS ----------
 
     def manual_backup(self):
         backup_database()
-        self.backup_label.config(
-            text=f"Last backup: {get_last_backup_text()}"
-        )
+        self.update_backup_labels()
         messagebox.showinfo(
             "Backup Complete",
             "Database backup created successfully."
         )
 
     def logout(self):
-        global auto_logout_manager
+        global auto_logout_manager, backup_scheduler
 
         if auto_logout_manager:
             auto_logout_manager.stop()
             auto_logout_manager = None
 
+        backup_scheduler = None
         self.destroy()
         show_login()
 
@@ -214,7 +264,16 @@ def show_login():
 
 
 def show_dashboard(role):
+    global backup_scheduler
+
     DashboardFrame(root, role)
+
+    # 🔄 Start backup checks AFTER login
+    backup_scheduler = SixHourBackupScheduler(
+        root=root,
+        backup_func=backup_database,
+        check_interval_minutes=10
+    )
 
 
 # ---------- ENTRY POINT ----------
@@ -223,12 +282,6 @@ if __name__ == "__main__":
     root = tk.Tk()
     root.title("Bakery System")
 
-    # 🔄 Backup every 6 hours (with missed-backup popup)
-    backup_scheduler = SixHourBackupScheduler(
-        root=root,
-        backup_func=backup_database,
-        check_interval_minutes=10
-    )
-
     show_login()
     root.mainloop()
+
