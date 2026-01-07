@@ -3,8 +3,10 @@ import sys
 from PIL import Image, ImageTk
 
 from utils import center_window
-from backup import backup_database
 from login_ui import LoginFrame
+from restore_backup import RestoreBackupWindow
+from backup import backup_database
+from backup_scheduler import BackupScheduler
 
 from inventory import open_inventory
 from recipes import open_recipes
@@ -21,23 +23,24 @@ def load_image(path, size):
     return ImageTk.PhotoImage(img)
 
 
-# ---------- DASHBOARD ----------
+# ---------- DASHBOARD FRAME ----------
 
 class DashboardFrame(tk.Frame):
-    def __init__(self, master, role, on_logout):
+    def __init__(self, master, role):
         super().__init__(master, bg="#f2ebe3")
-        self.on_logout = on_logout
 
-        master.geometry("700x850")
+        # Compact dashboard window
+        master.geometry("700x820")
         master.resizable(False, False)
-        center_window(master, 700, 850)
+        center_window(master, 700, 820)
 
         self.pack(fill="both", expand=True)
 
+        # ---------- HEADER ----------
         header = tk.Frame(self, bg="#f2ebe3")
-        header.pack(pady=20)
+        header.pack(pady=10)
 
-        logo = load_image("images/logo.png", (160, 160))
+        logo = load_image("images/logo.png", (120, 120))
         self.logo_ref = logo
 
         tk.Label(header, image=logo, bg="#f2ebe3").pack()
@@ -45,73 +48,114 @@ class DashboardFrame(tk.Frame):
         tk.Label(
             header,
             text="Bakery Management System",
-            font=("Arial", 24, "bold"),
+            font=("Arial", 22, "bold"),
             bg="#f2ebe3",
             fg="#5a3b24"
-        ).pack(pady=10)
+        ).pack(pady=5)
 
         tk.Label(
             header,
             text=f"Dashboard | {role}",
-            font=("Arial", 14),
+            font=("Arial", 13),
             bg="#f2ebe3",
             fg="#7b5b3b"
         ).pack()
 
+        # ---------- GRID ----------
         grid = tk.Frame(self, bg="#f2ebe3")
-        grid.pack(expand=True, pady=30)
+        grid.pack(expand=True)
 
-        def dash_item(r, c, img, text, cmd):
-            f = tk.Frame(grid, bg="#f2ebe3")
-            f.grid(row=r, column=c, padx=60, pady=40)
-            tk.Button(f, image=img, command=cmd, bd=0, bg="#f2ebe3").pack()
-            tk.Label(f, text=text, font=("Arial", 12, "bold"),
-                     bg="#f2ebe3").pack(pady=6)
+        for r in range(3):
+            grid.rowconfigure(r, weight=1)
+        for c in range(3):
+            grid.columnconfigure(c, weight=1)
 
-        inventory = load_image("images/inventory.png", (128, 128))
-        recipes = load_image("images/recipes.png", (128, 128))
-        orders = load_image("images/orders.png", (128, 128))
-        receipts = load_image("images/receipts.png", (128, 128))
-        reports_img = load_image("images/reports.png", (128, 128))
-        logout_img = load_image("images/exit.png", (128, 128))
+        def dash_item(row, col, img, text, cmd):
+            frame = tk.Frame(grid, bg="#f2ebe3")
+            frame.grid(row=row, column=col, padx=35, pady=20)
+
+            tk.Button(
+                frame,
+                image=img,
+                command=cmd,
+                bd=0,
+                bg="#f2ebe3",
+                activebackground="#f2ebe3"
+            ).pack()
+
+            tk.Label(
+                frame,
+                text=text,
+                font=("Arial", 11, "bold"),
+                bg="#f2ebe3",
+                fg="#3b2a1a"
+            ).pack(pady=4)
+
+        # ---------- ICONS (96x96) ----------
+        inventory = load_image("images/inventory.png", (96, 96))
+        recipes = load_image("images/recipes.png", (96, 96))
+        orders = load_image("images/orders.png", (96, 96))
+        receipts = load_image("images/receipts.png", (96, 96))
+        reports_img = load_image("images/reports.png", (96, 96))
+        logout_img = load_image("images/exit.png", (96, 96))
+        restore_img = load_image("images/restore.png", (96, 96))
 
         self.img_refs = [
             inventory, recipes, orders,
-            receipts, reports_img, logout_img
+            receipts, reports_img,
+            logout_img, restore_img
         ]
 
+        # ---------- ROW 0 ----------
         dash_item(0, 0, inventory, "Inventory", open_inventory)
         dash_item(0, 1, recipes, "Recipes", open_recipes)
         dash_item(0, 2, orders, "Make Cake", open_make_cake)
+
+        # ---------- ROW 1 ----------
         dash_item(1, 0, receipts, "Receipts History", open_receipts_history)
 
         if role == "admin":
             dash_item(1, 1, reports_img, "Reports", open_reports)
+            dash_item(2, 1,restore_img,"Restore Backup",lambda: RestoreBackupWindow(self.master))
 
-        dash_item(1, 2, logout_img, "Logout", self.logout)
+        # ---------- ROW 2 ----------
+        if role == "admin":
+            dash_item(1, 2, logout_img, "Logout", self.logout)
+
+    # ---------- ACTIONS ----------
 
     def logout(self):
         self.destroy()
-        show_login()   # no args
+        show_login()
+
+    def exit_app(self):
+        self.master.destroy()
+        sys.exit(0)
 
 
-# ---------- APP CONTROLLER ----------
+# ---------- CONTROLLER FUNCTIONS ----------
 
 def show_login():
-    LoginFrame(root, on_login=show_dashboard)
+    # Resize window for login
+    LoginFrame(root, show_dashboard)
 
 
 def show_dashboard(role):
-    DashboardFrame(root, role, on_logout=show_login)
+    DashboardFrame(root, role)
 
 
 # ---------- ENTRY POINT ----------
 
 if __name__ == "__main__":
-    backup_database()
-
     root = tk.Tk()
     root.title("Bakery System")
+
+    # 🔄 Auto-backup every 30 minutes (time-based only)
+    backup_scheduler = BackupScheduler(
+        root=root,
+        interval_minutes=30,   # change to 15 / 60 if needed
+        backup_func=backup_database
+    )
 
     show_login()
     root.mainloop()
