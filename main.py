@@ -1,5 +1,6 @@
 import tkinter as tk
 import sys
+from tkinter import messagebox
 from PIL import Image, ImageTk
 
 from utils import center_window
@@ -7,6 +8,7 @@ from login_ui import LoginFrame
 from restore_backup import RestoreBackupWindow
 from backup import backup_database
 from backup_scheduler import BackupScheduler
+from auto_logout import AutoLogoutManager
 
 from inventory import open_inventory
 from recipes import open_recipes
@@ -23,18 +25,28 @@ def load_image(path, size):
     return ImageTk.PhotoImage(img)
 
 
+auto_logout_manager = None
+
+
 # ---------- DASHBOARD FRAME ----------
 
 class DashboardFrame(tk.Frame):
     def __init__(self, master, role):
         super().__init__(master, bg="#f2ebe3")
+        global auto_logout_manager
 
-        # Compact dashboard window
         master.geometry("700x820")
         master.resizable(False, False)
         center_window(master, 700, 820)
 
         self.pack(fill="both", expand=True)
+
+        # ⏱️ AUTO LOGOUT (5 MIN)
+        auto_logout_manager = AutoLogoutManager(
+            root=master,
+            timeout_minutes=5,
+            on_timeout=self.logout
+        )
 
         # ---------- HEADER ----------
         header = tk.Frame(self, bg="#f2ebe3")
@@ -91,19 +103,19 @@ class DashboardFrame(tk.Frame):
                 fg="#3b2a1a"
             ).pack(pady=4)
 
-        # ---------- ICONS (96x96) ----------
+        # ---------- ICONS ----------
         inventory = load_image("images/inventory.png", (96, 96))
         recipes = load_image("images/recipes.png", (96, 96))
         orders = load_image("images/orders.png", (96, 96))
         receipts = load_image("images/receipts.png", (96, 96))
         reports_img = load_image("images/reports.png", (96, 96))
         logout_img = load_image("images/exit.png", (96, 96))
-        restore_img = load_image("images/restore.png", (96, 96))
+        backup_img = load_image("images/restore.png", (96, 96))
 
         self.img_refs = [
             inventory, recipes, orders,
             receipts, reports_img,
-            logout_img, restore_img
+            logout_img, backup_img
         ]
 
         # ---------- ROW 0 ----------
@@ -116,27 +128,48 @@ class DashboardFrame(tk.Frame):
 
         if role == "admin":
             dash_item(1, 1, reports_img, "Reports", open_reports)
-            dash_item(2, 1,restore_img,"Restore Backup",lambda: RestoreBackupWindow(self.master))
 
-        # ---------- ROW 2 ----------
+        dash_item(1, 2, logout_img, "Logout", self.logout)
+
+        # ---------- ROW 2 (ADMIN ONLY) ----------
         if role == "admin":
-            dash_item(1, 2, logout_img, "Logout", self.logout)
+            dash_item(
+                2, 0,
+                backup_img,
+                "Backup Now",
+                self.manual_backup
+            )
+
+            dash_item(
+                2, 1,
+                backup_img,
+                "Restore Backup",
+                lambda: RestoreBackupWindow(self.master)
+            )
 
     # ---------- ACTIONS ----------
 
+    def manual_backup(self):
+        backup_database()
+        messagebox.showinfo(
+            "Backup Complete",
+            "Database backup created successfully."
+        )
+
     def logout(self):
+        global auto_logout_manager
+
+        if auto_logout_manager:
+            auto_logout_manager.stop()
+            auto_logout_manager = None
+
         self.destroy()
         show_login()
 
-    def exit_app(self):
-        self.master.destroy()
-        sys.exit(0)
 
-
-# ---------- CONTROLLER FUNCTIONS ----------
+# ---------- CONTROLLER ----------
 
 def show_login():
-    # Resize window for login
     LoginFrame(root, show_dashboard)
 
 
@@ -150,10 +183,10 @@ if __name__ == "__main__":
     root = tk.Tk()
     root.title("Bakery System")
 
-    # 🔄 Auto-backup every 30 minutes (time-based only)
+    # 🔄 AUTO BACKUP EVERY 30 MINUTES
     backup_scheduler = BackupScheduler(
         root=root,
-        interval_minutes=90,   # change to 15 / 60 if needed
+        interval_minutes=30,
         backup_func=backup_database
     )
 
