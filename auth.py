@@ -1,13 +1,14 @@
 import sqlite3
 import hashlib
+from paths import get_db_path
 
-DB_NAME = "bakery.db"
 
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
+
 def create_user(username, password, role="staff"):
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(get_db_path())
     cur = conn.cursor()
 
     try:
@@ -22,15 +23,17 @@ def create_user(username, password, role="staff"):
     finally:
         conn.close()
 
+
 def authenticate_user(username, password):
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(get_db_path())
     cur = conn.cursor()
 
     cur.execute(
         "SELECT role FROM users WHERE username=? AND password_hash=?",
         (username, hash_password(password))
     )
+
     user = cur.fetchone()
     conn.close()
+    return user  # ('admin',) or None
 
-    return user  # None if invalid

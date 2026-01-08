@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
-from datetime import datetime
+from paths import get_db_path
 from utils import center_window
 
 
@@ -13,7 +13,7 @@ def safe_float(value):
 
 
 def ensure_receipts_table():
-    conn = sqlite3.connect("bakery.db")
+    conn = sqlite3.connect(get_db_path())
     cur = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS receipts (
@@ -119,7 +119,7 @@ def open_reports():
 
         selected_range = range_combo.get()
         current_range["value"] = selected_range  # remember it
-        conn = sqlite3.connect("bakery.db")
+        conn = sqlite3.connect(get_db_path())
         cur = conn.cursor()
 
         # Filter receipts based on range
@@ -257,7 +257,7 @@ def open_reports():
         tree_det.tag_configure("odd", background="#ffffff")
 
         # Load receipts for this recipe & range
-        conn = sqlite3.connect("bakery.db")
+        conn = sqlite3.connect(get_db_path())
         cur = conn.cursor()
 
         if selected_range == "Today":
@@ -298,7 +298,7 @@ def open_reports():
             item = tree_det.item(sel[0])
             rec_id = item["values"][0]
 
-            conn2 = sqlite3.connect("bakery.db")
+            conn2 = sqlite3.connect(get_db_path())
             cur2 = conn2.cursor()
             cur2.execute(
                 "SELECT receipt_text FROM receipts WHERE id = ?",

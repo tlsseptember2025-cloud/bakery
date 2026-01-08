@@ -1,7 +1,8 @@
 import sqlite3
+from paths import get_db_path
 
 def init_db():
-    conn = sqlite3.connect("bakery.db")
+    conn = sqlite3.connect(get_db_path())
     cur = conn.cursor()
 
     # --- Ingredients table ---

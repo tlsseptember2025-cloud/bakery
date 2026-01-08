@@ -2,11 +2,12 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
 from utils import center_window
+from paths import get_db_path
 
 
 def ensure_recipe_table_columns():
     """Make sure recipes table has selling_price column."""
-    conn = sqlite3.connect("bakery.db")
+    conn = sqlite3.connect(get_db_path())
     cur = conn.cursor()
 
     cur.execute("PRAGMA table_info(recipes)")
@@ -70,7 +71,7 @@ def open_recipes():
         for row in recipe_tree.get_children():
             recipe_tree.delete(row)
 
-        conn = sqlite3.connect("bakery.db")
+        conn = sqlite3.connect(get_db_path())
         cur = conn.cursor()
         cur.execute("SELECT id, name, selling_price FROM recipes ORDER BY id ASC")
         rows = cur.fetchall()
@@ -131,7 +132,7 @@ def open_recipes():
         for row in ing_tree.get_children():
             ing_tree.delete(row)
 
-        conn = sqlite3.connect("bakery.db")
+        conn = sqlite3.connect(get_db_path())
         cur = conn.cursor()
         cur.execute("SELECT id, name, unit FROM ingredients ORDER BY name ASC")
         rows = cur.fetchall()
@@ -207,7 +208,7 @@ def open_recipes():
             return
 
         try:
-            conn = sqlite3.connect("bakery.db")
+            conn = sqlite3.connect(get_db_path())
             cur = conn.cursor()
 
             # Insert recipe

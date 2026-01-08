@@ -2,12 +2,13 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
 from utils import center_window
+from paths import get_db_path
 
 
 # ---------- DB HELPER: ensure cost_per_unit column exists ----------
 
 def ensure_cost_column():
-    conn = sqlite3.connect("bakery.db")
+    conn = sqlite3.connect(get_db_path())
     cur = conn.cursor()
     cur.execute("PRAGMA table_info(ingredients)")
     cols = [row[1].lower() for row in cur.fetchall()]
@@ -65,7 +66,7 @@ def open_inventory():
         for row in tree.get_children():
             tree.delete(row)
 
-        conn = sqlite3.connect("bakery.db")
+        conn = sqlite3.connect(get_db_path())
         cur = conn.cursor()
         cur.execute(
             "SELECT name, quantity, unit, alert_level, cost_per_unit "
@@ -122,7 +123,7 @@ def open_inventory():
                 win.lift(); win.focus_force()
                 return
 
-            conn = sqlite3.connect("bakery.db")
+            conn = sqlite3.connect(get_db_path())
             cur = conn.cursor()
 
             # check duplicate (case-insensitive)
@@ -199,7 +200,7 @@ def open_inventory():
                     restock_win.lift(); restock_win.focus_force()
                     return
 
-                conn_local = sqlite3.connect("bakery.db")
+                conn_local = sqlite3.connect(get_db_path())
                 cur_local = conn_local.cursor()
                 cur_local.execute(
                     "UPDATE ingredients SET quantity = quantity + ? WHERE name=?",
@@ -266,7 +267,7 @@ def open_inventory():
             for row in tree_ls.get_children():
                 tree_ls.delete(row)
 
-            conn2 = sqlite3.connect("bakery.db")
+            conn2 = sqlite3.connect(get_db_path())
             cur2 = conn2.cursor()
             cur2.execute(
                 "SELECT name, quantity, unit, alert_level, cost_per_unit "
@@ -313,7 +314,7 @@ def open_inventory():
                         restock_win.lift(); restock_win.focus_force()
                         return
 
-                    conn3 = sqlite3.connect("bakery.db")
+                    conn3 = sqlite3.connect(get_db_path())
                     cur3 = conn3.cursor()
                     cur3.execute(
                         "UPDATE ingredients SET quantity = quantity + ? WHERE name=?",

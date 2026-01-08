@@ -1,28 +1,28 @@
-import os
 import shutil
 from datetime import datetime
+from paths import get_db_path, get_backups_dir
 
-DB_NAME = "bakery.db"
-BACKUP_DIR = "backups"
+
 LAST_BACKUP_FILE = "last_backup.txt"
 
 
 def backup_database():
-    if not os.path.isfile(DB_NAME):
-        return
-
-    os.makedirs(BACKUP_DIR, exist_ok=True)
+    db_path = get_db_path()
+    backups_dir = get_backups_dir()
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    backup_path = os.path.join(BACKUP_DIR, f"bakery_{timestamp}.db")
+    backup_path = f"{backups_dir}/bakery_{timestamp}.db"
 
     try:
-        shutil.copy2(DB_NAME, backup_path)
+        shutil.copy2(db_path, backup_path)
 
-        # ✅ Update last backup timestamp
+        # Save last backup time
         with open(LAST_BACKUP_FILE, "w") as f:
             f.write(datetime.now().isoformat())
 
         print(f"[BACKUP OK] {backup_path}")
+        return backup_path
+
     except Exception as e:
         print(f"[BACKUP ERROR] {e}")
+        return None

@@ -6,6 +6,7 @@ import tempfile
 from datetime import datetime
 from utils import center_window
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from paths import get_db_path
 
 
 # ----- Optional Word (docx) support -----
@@ -33,7 +34,7 @@ def safe_float(value):
 
 
 def ensure_receipts_table():
-    conn = sqlite3.connect("bakery.db")
+    conn = sqlite3.connect(get_db_path())
     cur = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS receipts (
@@ -271,7 +272,7 @@ def open_receipts_history():
         for row in tree.get_children():
             tree.delete(row)
 
-        conn = sqlite3.connect("bakery.db")
+        conn = sqlite3.connect(get_db_path())
         cur = conn.cursor()
         try:
             cur.execute("""
@@ -315,7 +316,7 @@ def open_receipts_history():
         item = tree.item(selected[0])
         receipt_id = item['values'][0]
 
-        conn = sqlite3.connect("bakery.db")
+        conn = sqlite3.connect(get_db_path())
         cur = conn.cursor()
         cur.execute("""
             SELECT recipe_name, receipt_text, created_at, quantity, customer_name, total

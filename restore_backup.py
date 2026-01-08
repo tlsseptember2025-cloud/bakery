@@ -4,9 +4,7 @@ import tkinter as tk
 from tkinter import messagebox
 
 from utils import center_window
-
-DB_NAME = "bakery.db"
-BACKUP_DIR = "backups"
+from paths import get_db_path, get_backups_dir
 
 
 class RestoreBackupWindow(tk.Toplevel):
@@ -15,18 +13,12 @@ class RestoreBackupWindow(tk.Toplevel):
 
         self.title("Restore Backup")
         self.resizable(False, False)
-
-        width = 420
-        height = 360
-        center_window(self, width, height)
-
+        center_window(self, 420, 360)
         self.configure(bg="#f2ebe3")
 
-        # Make this window modal (optional but recommended)
         self.transient(master)
         self.grab_set()
 
-        # ---------- TITLE ----------
         tk.Label(
             self,
             text="Restore Database Backup",
@@ -35,17 +27,11 @@ class RestoreBackupWindow(tk.Toplevel):
             fg="#5a3b24"
         ).pack(pady=10)
 
-        # ---------- LISTBOX ----------
-        self.listbox = tk.Listbox(
-            self,
-            width=55,
-            height=12
-        )
+        self.listbox = tk.Listbox(self, width=55, height=12)
         self.listbox.pack(pady=10)
 
         self.load_backups()
 
-        # ---------- BUTTONS ----------
         btn_frame = tk.Frame(self, bg="#f2ebe3")
         btn_frame.pack(pady=10)
 
@@ -65,21 +51,17 @@ class RestoreBackupWindow(tk.Toplevel):
             command=self.destroy
         ).grid(row=0, column=1, padx=5)
 
-    # ---------- LOGIC ----------
-
     def load_backups(self):
         self.listbox.delete(0, tk.END)
 
-        if not os.path.isdir(BACKUP_DIR):
-            return
+        backups_dir = get_backups_dir()
 
-        for file in sorted(os.listdir(BACKUP_DIR), reverse=True):
+        for file in sorted(os.listdir(backups_dir), reverse=True):
             if file.endswith(".db"):
                 self.listbox.insert(tk.END, file)
 
     def restore_backup(self):
         selection = self.listbox.curselection()
-
         if not selection:
             messagebox.showwarning(
                 "Select Backup",
@@ -88,7 +70,7 @@ class RestoreBackupWindow(tk.Toplevel):
             return
 
         backup_file = self.listbox.get(selection[0])
-        backup_path = os.path.join(BACKUP_DIR, backup_file)
+        backup_path = os.path.join(get_backups_dir(), backup_file)
 
         confirm = messagebox.askyesno(
             "Confirm Restore",
@@ -98,7 +80,7 @@ class RestoreBackupWindow(tk.Toplevel):
 
         if confirm:
             try:
-                shutil.copy2(backup_path, DB_NAME)
+                shutil.copy2(backup_path, get_db_path())
                 messagebox.showinfo(
                     "Restore Complete",
                     "Database restored successfully.\n\n"
@@ -110,3 +92,4 @@ class RestoreBackupWindow(tk.Toplevel):
                     "Restore Failed",
                     f"An error occurred:\n{e}"
                 )
+

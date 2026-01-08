@@ -5,6 +5,8 @@ import os
 import tempfile
 from datetime import datetime
 from utils import center_window
+from paths import get_db_path
+
 
 # ----- Optional Word (docx) support -----
 try:
@@ -31,7 +33,7 @@ def safe_float(value):
 
 def ensure_receipts_table():
     """Make sure receipts table exists with needed columns."""
-    conn = sqlite3.connect("bakery.db")
+    conn = sqlite3.connect(get_db_path())
     cur = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS receipts (
@@ -50,7 +52,7 @@ def ensure_receipts_table():
 
 def save_receipt_to_db(recipe_name, qty, customer_name, total, receipt_text, created_at):
     ensure_receipts_table()
-    conn = sqlite3.connect("bakery.db")
+    conn = sqlite3.connect(get_db_path())
     cur = conn.cursor()
     cur.execute("""
         INSERT INTO receipts (recipe_name, quantity, customer_name, total, receipt_text, created_at)
@@ -69,7 +71,7 @@ def save_receipt_to_db(recipe_name, qty, customer_name, total, receipt_text, cre
 
 def ensure_cost_column():
     """Ensure ingredients has cost_per_unit column (for possible internal reports)."""
-    conn = sqlite3.connect("bakery.db")
+    conn = sqlite3.connect(get_db_path())
     cur = conn.cursor()
     cur.execute("PRAGMA table_info(ingredients)")
     cols = [r[1].lower() for r in cur.fetchall()]
@@ -364,7 +366,7 @@ def open_make_cake():
     customer_entry.pack(pady=5)
 
     # Load recipes into combo
-    conn = sqlite3.connect("bakery.db")
+    conn = sqlite3.connect(get_db_path())
     cur = conn.cursor()
     cur.execute("SELECT id, name FROM recipes ORDER BY name ASC")
     recipes = cur.fetchall()
@@ -394,7 +396,7 @@ def open_make_cake():
 
         recipe_id = recipe_map[recipe_name]
 
-        conn = sqlite3.connect("bakery.db")
+        conn = sqlite3.connect(get_db_path())
         cur = conn.cursor()
 
         # Get selling price
