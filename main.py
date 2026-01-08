@@ -18,6 +18,16 @@ from receipts_history import open_receipts_history
 from reports import open_reports
 
 
+import os
+import shutil
+from paths import is_frozen, get_db_path
+
+if is_frozen():
+    db_target = get_db_path()
+    if not os.path.exists(db_target):
+        shutil.copy("bakery.db", db_target)
+
+
 LAST_BACKUP_FILE = "last_backup.txt"
 BACKUP_INTERVAL_HOURS = 6
 
